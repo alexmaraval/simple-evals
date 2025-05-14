@@ -275,14 +275,14 @@ class HealthBenchEval(Eval):
         subset_name: Literal["hard", "consensus"] | None = None,
     ):
         if run_reference_completions:
-            assert physician_completions_mode is not None, (
-                "physician_completions_mode must be provided if run_reference_completions is True"
-            )
-            assert PHYSICIAN_COMPLETION_MODES[physician_completions_mode][
+            assert (
+                physician_completions_mode is not None
+            ), "physician_completions_mode must be provided if run_reference_completions is True"
+            assert PHYSICIAN_COMPLETION_MODES[
+                physician_completions_mode
+            ][
                 "has_reference"
-            ], (
-                "physician_completions_mode must have reference completions if run_reference_completions is True"
-            )
+            ], "physician_completions_mode must have reference completions if run_reference_completions is True"
 
         if subset_name == "hard":
             input_path = INPUT_PATH_HARD
@@ -302,9 +302,9 @@ class HealthBenchEval(Eval):
         # physician completions mode
         self.physician_completions_mode = physician_completions_mode
         if self.physician_completions_mode is not None:
-            assert self.physician_completions_mode in PHYSICIAN_COMPLETION_MODES, (
-                f"Invalid physician completions mode: {self.physician_completions_mode}; must be one of {PHYSICIAN_COMPLETION_MODES.keys()}"
-            )
+            assert (
+                self.physician_completions_mode in PHYSICIAN_COMPLETION_MODES
+            ), f"Invalid physician completions mode: {self.physician_completions_mode}; must be one of {PHYSICIAN_COMPLETION_MODES.keys()}"
             # subset to only the rows which have physician completions from that group
             examples_matching_mode = [
                 example

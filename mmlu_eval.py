@@ -102,7 +102,9 @@ class MMLUEval(Eval):
             ]
             sampler_response = sampler(prompt_messages)
             response_text = sampler_response.response_text
-            actual_queried_prompt_messages = sampler_response.actual_queried_message_list
+            actual_queried_prompt_messages = (
+                sampler_response.actual_queried_message_list
+            )
             response_text = normalize_response(response_text)
             extracted_answer = None
             for answer_regex in MULTILINGUAL_ANSWER_REGEXES:
@@ -119,7 +121,9 @@ class MMLUEval(Eval):
                 correct_answer=row["Answer"],
                 extracted_answer=extracted_answer,
             )
-            convo = actual_queried_prompt_messages + [dict(content=response_text, role="assistant")]
+            convo = actual_queried_prompt_messages + [
+                dict(content=response_text, role="assistant")
+            ]
             category = subject2category.get(row["Subject"], "other")
             return SingleEvalResult(
                 html=html, score=score, metrics={category: score}, convo=convo
