@@ -15,6 +15,8 @@ import argparse
 import copy
 import hashlib
 import json
+import jsonlines
+import os
 import random
 import re
 from collections import defaultdict
@@ -97,6 +99,28 @@ HEALTHBENCH_HTML_JINJA = (
 )
 
 
+def parse_json_to_dict2(json_string: str) -> dict:
+    # First attempt: extract JSON block inside ```json ... ```
+    match1 = re.search(r"```json\s*([\s\S]*?)\s*```", json_string)
+    if match1:
+        try:
+            return json.loads(match1.group(1))
+        except json.JSONDecodeError as e1:
+            pass  # Try fallback
+
+    # Second attempt: extract any JSON-like object (less strict)
+    match2 = re.search(r"(\{[\s\S]*?\})", json_string)
+    if match2:
+        try:
+            return json.loads(match2.group(1))
+        except json.JSONDecodeError as e2:
+            raise json.JSONDecodeError(
+                f"Failed both attempts. Final error: {e2.msg}", e2.doc, e2.pos
+            )
+
+    raise ValueError("No JSON content found in input string.")
+
+
 def parse_json_to_dict(json_string: str) -> dict:
     # Remove markdown-style ```json``` markers if present
     json_cleaned = re.sub(r"^```json\s*|\s*```$", "", json_string.strip())
@@ -177,15 +201,33 @@ def get_usage_dict(response_usage) -> dict[str, int | None]:
             "total_tokens": response_usage.total_tokens,
         }
     except AttributeError:
+        # response_usage.prompt_tokens_details is None ...
+        if response_usage.prompt_tokens_details is not None:
+            if hasattr(response_usage.prompt_tokens_details, "cached_tokens"):
+                input_cached_tokens = response_usage.prompt_tokens_details.cached_tokens
+            else:
+                input_cached_tokens = response_usage.prompt_tokens_details[
+                    "cached_tokens"
+                ]
+        else:
+            input_cached_tokens = None
+        if response_usage.completion_tokens_details is not None:
+            if hasattr(response_usage.completion_tokens_details, "reasoning_tokens"):
+                output_reasoning_tokens = (
+                    response_usage.completion_tokens_details.reasoning_tokens
+                )
+            else:
+                output_reasoning_tokens = response_usage.completion_tokens_details[
+                    "reasoning_tokens"
+                ]
+        else:
+            output_reasoning_tokens = None
+
         return {
             "input_tokens": response_usage.prompt_tokens,
-            "input_cached_tokens": response_usage.prompt_tokens_details.cached_tokens
-            if hasattr(response_usage.prompt_tokens_details, "cached_tokens")
-            else response_usage.prompt_tokens_details["cached_tokens"],
+            "input_cached_tokens": input_cached_tokens,
             "output_tokens": response_usage.completion_tokens,
-            "output_reasoning_tokens": response_usage.completion_tokens_details.reasoning_tokens
-            if hasattr(response_usage.completion_tokens_details, "reasoning_tokens")
-            else response_usage.completion_tokens_details["reasoning_tokens"],
+            "output_reasoning_tokens": output_reasoning_tokens,
             "total_tokens": response_usage.total_tokens,
         }
 
@@ -284,18 +326,36 @@ class HealthBenchEval(Eval):
                 "has_reference"
             ], "physician_completions_mode must have reference completions if run_reference_completions is True"
 
-        if subset_name == "hard":
-            input_path = INPUT_PATH_HARD
-        elif subset_name == "consensus":
-            input_path = INPUT_PATH_CONSENSUS
-        elif subset_name is None:
-            input_path = INPUT_PATH
-        else:
-            assert False, f"Invalid subset name: {subset_name}"
-        with bf.BlobFile(input_path, "rb") as f:
-            examples = [json.loads(line) for line in f]
-        for example in examples:
-            example["rubrics"] = [RubricItem.from_dict(d) for d in example["rubrics"]]
+        try:
+            if subset_name == "hard":
+                input_path = INPUT_PATH_HARD
+            elif subset_name == "consensus":
+                input_path = INPUT_PATH_CONSENSUS
+            elif subset_name is None:
+                input_path = INPUT_PATH
+            else:
+                assert False, f"Invalid subset name: {subset_name}"
+            with bf.BlobFile(input_path, "rb") as f:
+                examples = [json.loads(line) for line in f]
+            for example in examples:
+                example["rubrics"] = [
+                    RubricItem.from_dict(d) for d in example["rubrics"]
+                ]
+        except bf._common.Error:
+            if subset_name == "hard":
+                input_path = os.getenv("INPUT_PATH_HARD_LOCAL")
+            elif subset_name == "consensus":
+                input_path = os.getenv("INPUT_PATH_CONSENSUS_LOCAL")
+            elif subset_name is None:
+                input_path = os.getenv("INPUT_PATH_LOCAL")
+            else:
+                assert False, f"Invalid subset name: {subset_name}"
+            with jsonlines.open(input_path, "r") as f:
+                examples = [line for line in f]
+            for example in examples:
+                example["rubrics"] = [
+                    RubricItem.from_dict(d) for d in example["rubrics"]
+                ]
 
         rng = random.Random(0)
 
@@ -374,7 +434,7 @@ class HealthBenchEval(Eval):
             while True:
                 sampler_response = self.grader_model(messages)
                 grading_response = sampler_response.response_text
-                grading_response_dict = parse_json_to_dict(grading_response)
+                grading_response_dict = parse_json_to_dict2(grading_response)
                 if "criteria_met" in grading_response_dict:
                     label = grading_response_dict["criteria_met"]
                     if label is True or label is False:

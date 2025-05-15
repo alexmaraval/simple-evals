@@ -1,9 +1,10 @@
 import argparse
 import json
-import subprocess
+import os
 from datetime import datetime
 
 import pandas as pd
+from dotenv import load_dotenv
 
 from . import common
 from .browsecomp_eval import BrowseCompEval
@@ -11,16 +12,20 @@ from .drop_eval import DropEval
 from .gpqa_eval import GPQAEval
 from .healthbench_eval import HealthBenchEval
 from .healthbench_meta_eval import HealthBenchMetaEval
+from .humaneval_eval import HumanEval
 from .math_eval import MathEval
 from .mgsm_eval import MGSMEval
 from .mmlu_eval import MMLUEval
-from .humaneval_eval import HumanEval
 from .sampler.chat_completion_sampler import (
     OPENAI_SYSTEM_MESSAGE_API,
     OPENAI_SYSTEM_MESSAGE_CHATGPT,
     ChatCompletionSampler,
 )
 from .sampler.claude_sampler import ClaudeCompletionSampler, CLAUDE_SYSTEM_MESSAGE_LMSYS
+from .sampler.hosted_model_sampler import (
+    HostedModelChatCompletionSampler,
+    HOSTED_MODEL_SYSTEM_MESSAGE,
+)
 from .sampler.o_chat_completion_sampler import OChatCompletionSampler
 from .sampler.responses_sampler import ResponsesSampler
 from .simpleqa_eval import SimpleQAEval
@@ -61,6 +66,8 @@ def main():
     )
 
     args = parser.parse_args()
+
+    load_dotenv()
 
     models = {
         # Reasoning Models
@@ -233,8 +240,15 @@ def main():
         "claude-3-haiku-20240307": ClaudeCompletionSampler(
             model="claude-3-haiku-20240307",
         ),
+        "qwen3-32b": HostedModelChatCompletionSampler(
+            # model="qwen3-32b",
+            model="Q3-M",
+            system_message=HOSTED_MODEL_SYSTEM_MESSAGE,
+            api_key=os.getenv("HOSTED_MODEL_API_KEY"),
+            base_url=os.getenv("HOSTED_MODEL_URL"),
+            qwen3_no_thinking=True,
+        ),
     }
-
     if args.list_models:
         print("Available models:")
         for model_name in models.keys():
@@ -251,13 +265,29 @@ def main():
 
     print(f"Running with args {args}")
 
-    grading_sampler = ChatCompletionSampler(
-        model="gpt-4.1-2025-04-14",
-        system_message=OPENAI_SYSTEM_MESSAGE_API,
-        max_tokens=2048,
-    )
-    equality_checker = ChatCompletionSampler(model="gpt-4-turbo-preview")
-    # ^^^ used for fuzzy matching, just for math
+    if isinstance(models[list(models)[0]], HostedModelChatCompletionSampler):
+        # grading_sampler = HostedModelChatCompletionSampler(
+        #     model=args.model,
+        #     system_message=HOSTED_MODEL_SYSTEM_MESSAGE,
+        #     api_key=args.api_key,
+        #     base_url=args.base_url,
+        # )
+        # equality_checker = HostedModelChatCompletionSampler(
+        #     model=args.model,
+        #     system_message=HOSTED_MODEL_SYSTEM_MESSAGE,
+        #     api_key=args.api_key,
+        #     base_url=args.base_url,
+        # )
+        grading_sampler = models[list(models)[0]]
+        equality_checker = models[list(models)[0]]
+    else:
+        grading_sampler = ChatCompletionSampler(
+            model="gpt-4.1-2025-04-14",
+            system_message=OPENAI_SYSTEM_MESSAGE_API,
+            max_tokens=2048,
+        )
+        equality_checker = ChatCompletionSampler(model="gpt-4-turbo-preview")
+        # ^^^ used for fuzzy matching, just for math
 
     def get_evals(eval_name, debug_mode):
         num_examples = (
@@ -339,7 +369,8 @@ def main():
         for eval_name in evals_list:
             try:
                 evals[eval_name] = get_evals(eval_name, args.debug)
-            except Exception:
+            except Exception as e:
+                print(e)
                 print(f"Error: eval '{eval_name}' not found.")
                 return
     else:

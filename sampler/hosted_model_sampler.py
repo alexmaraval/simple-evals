@@ -5,7 +5,9 @@ from typing import Any
 import openai
 from openai import OpenAI
 
-from ..types import MessageList, SamplerBase, SamplerResponse
+from ..types import MessageList, SamplerBase, SamplerResponse, Message
+
+HOSTED_MODEL_SYSTEM_MESSAGE = "You are a helpful assistant."
 
 
 class HostedModelChatCompletionSampler(SamplerBase):
@@ -23,6 +25,7 @@ class HostedModelChatCompletionSampler(SamplerBase):
         max_tokens: int = 4096,
         reasoning_model: bool = False,
         reasoning_effort: str | None = None,
+        qwen3_no_thinking: bool = False,
     ):
         self.api_key = api_key
         self.base_url = base_url
@@ -34,6 +37,7 @@ class HostedModelChatCompletionSampler(SamplerBase):
         self.image_format = "url"
         self.reasoning_model = reasoning_model
         self.reasoning_effort = reasoning_effort
+        self.qwen3_no_thinking = qwen3_no_thinking
 
     def _handle_image(
         self,
@@ -56,7 +60,17 @@ class HostedModelChatCompletionSampler(SamplerBase):
     def _pack_message(self, role: str, content: Any):
         return {"role": str(role), "content": content}
 
+    def _add_no_thinking_instruction(self, message: Message):
+        return {
+            "role": message["role"],
+            "content": message["content"] + " /no_think",
+        }
+
     def __call__(self, message_list: MessageList) -> SamplerResponse:
+        if self.qwen3_no_thinking:
+            message_list = [
+                self._add_no_thinking_instruction(msg) for msg in message_list
+            ]
         if self.system_message:
             message_list = [
                 self._pack_message("system", self.system_message)
@@ -87,7 +101,7 @@ class HostedModelChatCompletionSampler(SamplerBase):
                     actual_queried_message_list=message_list,
                 )
             except Exception as e:
-                exception_backoff = 2**trial  # expontial back off
+                exception_backoff = 2**trial  # exponential back off
                 print(
                     f"Rate limit exception so wait and retry {trial} after {exception_backoff} sec",
                     e,
