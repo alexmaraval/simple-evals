@@ -398,6 +398,7 @@ def main():
     mergekey2resultpath = {}
     print(f"Running the following evals: {list(evals.keys())}")
     print(f"Running evals for the following models: {list(models.keys())}")
+    results_dir = os.getenv("RESULTS_DIR", "tmp")
 
     now = datetime.now()
     date_str = now.strftime("%Y%m%d_%H%M%S")
@@ -408,7 +409,7 @@ def main():
             file_stem = f"{eval_name}_{model_name}"
             # file stem should also include the year, month, day, and time in hours and minutes
             file_stem += f"_{date_str}"
-            report_filename = f"/tmp/{file_stem}{debug_suffix}.html"
+            report_filename = f"/{results_dir}/{file_stem}{debug_suffix}.html"
             print(f"Writing report to {report_filename}")
             with open(report_filename, "w") as fh:
                 fh.write(common.make_report(result))
@@ -417,12 +418,12 @@ def main():
             # Sort metrics by key
             metrics = dict(sorted(metrics.items()))
             print(metrics)
-            result_filename = f"/tmp/{file_stem}{debug_suffix}.json"
+            result_filename = f"/{results_dir}/{file_stem}{debug_suffix}.json"
             with open(result_filename, "w") as f:
                 f.write(json.dumps(metrics, indent=2))
             print(f"Writing results to {result_filename}")
 
-            full_result_filename = f"/tmp/{file_stem}{debug_suffix}_allresults.json"
+            full_result_filename = f"/{results_dir}/{file_stem}{debug_suffix}_allresults.json"
             with open(full_result_filename, "w") as f:
                 result_dict = {
                     "score": result.score,

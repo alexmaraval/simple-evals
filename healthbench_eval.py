@@ -100,6 +100,7 @@ HEALTHBENCH_HTML_JINJA = (
 
 
 def parse_json_to_dict2(json_string: str) -> dict:
+    # TODO escape quotes and double quotes from prompts or answers?
     # First attempt: extract JSON block inside ```json ... ```
     match1 = re.search(r"```json\s*([\s\S]*?)\s*```", json_string)
     if match1:
@@ -114,11 +115,21 @@ def parse_json_to_dict2(json_string: str) -> dict:
         try:
             return json.loads(match2.group(1))
         except json.JSONDecodeError as e2:
+            msg = f"Failed both attempts. Final error: {e2.msg}"
+            msg += (
+                "\n------------------------------------------------------------------------------------------\n"
+                f"{repr(json_string)}\n"
+                "------------------------------------------------------------------------------------------"
+            )
             raise json.JSONDecodeError(
-                f"Failed both attempts. Final error: {e2.msg}", e2.doc, e2.pos
+                msg, e2.doc, e2.pos
             )
 
-    raise ValueError("No JSON content found in input string.")
+    raise ValueError("No JSON content found in input string.\n\n"
+                     "------------------------------------------------------------------------------------------"
+                     f"{repr(json_string)}"
+                     "------------------------------------------------------------------------------------------"
+                     )
 
 
 def parse_json_to_dict(json_string: str) -> dict:
